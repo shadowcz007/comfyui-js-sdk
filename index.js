@@ -32,8 +32,9 @@ const handleWebSocket = (protocol = 's', serverAddress, promptId, clientId) => {
         const data = message.data
         console.log(
           '#executing',
-          data.node === null,
-          data.prompt_id === promptId
+          data.node ,
+          data.prompt_id ,
+          promptId
         )
         if (data.node === null && data.prompt_id === promptId) {
           ws.close()
