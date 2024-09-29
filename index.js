@@ -26,24 +26,27 @@ export const getHistory = async (
 
   const promptHistory = history[promptId]
   let outputImages = {}
-  for (const nodeId in promptHistory.outputs) {
-    const nodeOutput = promptHistory.outputs[nodeId]
-    const imagesOutput = []
-    if (nodeOutput.images) {
-      for (const image of nodeOutput.images) {
-        const imageData = await getImage(
-          protocol,
-          serverAddress,
-          image.filename,
-          image.subfolder,
-          image.type,
-          isBlob
-        )
-        imagesOutput.push(imageData)
+  if (promptHistory?.outputs) {
+    for (const nodeId in promptHistory.outputs) {
+      const nodeOutput = promptHistory.outputs[nodeId]
+      const imagesOutput = []
+      if (nodeOutput.images) {
+        for (const image of nodeOutput.images) {
+          const imageData = await getImage(
+            protocol,
+            serverAddress,
+            image.filename,
+            image.subfolder,
+            image.type,
+            isBlob
+          )
+          imagesOutput.push(imageData)
+        }
       }
+      outputImages[nodeId] = imagesOutput
     }
-    outputImages[nodeId] = imagesOutput
   }
+
   return outputImages
 }
 
@@ -61,17 +64,38 @@ const handleWebSocket = (
   return new Promise((resolve, reject) => {
     ws.onmessage = async event => {
       const message = JSON.parse(event.data)
-      if (message.type === 'executing') {
+      // if (message.type === 'executing') {
+      //   const data = message.data
+      //   console.log('#executing', data.node, data.prompt_id, promptId,message)
+      //   if (data.node === null && data.prompt_id === promptId) {
+      //     ws.close()
+      //     const outputImages = await getHistory(
+      //       protocol,
+      //       serverAddress,
+      //       promptId,
+      //       isBlob
+      //     )
+      //     resolve(outputImages)
+      //   }
+      // }else
+      if (message.type == 'executed') {
         const data = message.data
-        console.log('#executing', data.node, data.prompt_id, promptId)
-        if (data.node === null && data.prompt_id === promptId) {
-          ws.close()
-          const outputImages = await getHistory(
-            protocol,
-            serverAddress,
-            promptId
-          )
-
+        if (data.output?.images && data.prompt_id === promptId) {
+          console.log('#executed', promptId, message)
+          let outputImages = {}
+          let imagesOutput = []
+          for (const image of data.output.images) {
+            const imageData = await getImage(
+              protocol,
+              serverAddress,
+              image.filename,
+              image.subfolder,
+              image.type,
+              isBlob
+            )
+            imagesOutput.push(imageData)
+          }
+          outputImages[data.node] = imagesOutput
           resolve(outputImages)
         }
       }
