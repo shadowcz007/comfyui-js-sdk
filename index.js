@@ -3,24 +3,57 @@ export const getImage = async (
   serverAddress,
   filename,
   subfolder,
-  folderType
+  folderType,
+  isBlob = false
 ) => {
   const params = new URLSearchParams({ filename, subfolder, type: folderType })
-  const response = await fetch(
-    `http${protocol}://${serverAddress}/view?${params.toString()}`
-  )
+  let url = `http${protocol}://${serverAddress}/view?${params.toString()}`
+  if (!isBlob) return url
+  const response = await fetch(url)
   return await response.blob()
 }
 
-export const getHistory = async (protocol = 's', serverAddress, promptId) => {
+export const getHistory = async (
+  protocol = 's',
+  serverAddress,
+  promptId,
+  isBlob = false
+) => {
   const response = await fetch(
     `http${protocol}://${serverAddress}/history/${promptId}`
   )
-  return await response.json()
+  let history = await response.json()
+
+  const promptHistory = history[promptId]
+  let outputImages = {}
+  for (const nodeId in promptHistory.outputs) {
+    const nodeOutput = promptHistory.outputs[nodeId]
+    const imagesOutput = []
+    if (nodeOutput.images) {
+      for (const image of nodeOutput.images) {
+        const imageData = await getImage(
+          protocol,
+          serverAddress,
+          image.filename,
+          image.subfolder,
+          image.type,
+          isBlob
+        )
+        imagesOutput.push(imageData)
+      }
+    }
+    outputImages[nodeId] = imagesOutput
+  }
+  return outputImages
 }
 
-const handleWebSocket = (protocol = 's', serverAddress, promptId, clientId) => {
-  const outputImages = {}
+const handleWebSocket = (
+  protocol = 's',
+  serverAddress,
+  promptId,
+  clientId,
+  isBlob = false
+) => {
   const ws = new WebSocket(
     `ws${protocol}://${serverAddress}/ws?clientId=${clientId}`
   )
@@ -30,34 +63,15 @@ const handleWebSocket = (protocol = 's', serverAddress, promptId, clientId) => {
       const message = JSON.parse(event.data)
       if (message.type === 'executing') {
         const data = message.data
-        console.log(
-          '#executing',
-          data.node ,
-          data.prompt_id ,
-          promptId
-        )
+        console.log('#executing', data.node, data.prompt_id, promptId)
         if (data.node === null && data.prompt_id === promptId) {
           ws.close()
-          const history = await getHistory(protocol, serverAddress, promptId)
-          const promptHistory = history[promptId]
+          const outputImages = await getHistory(
+            protocol,
+            serverAddress,
+            promptId
+          )
 
-          for (const nodeId in promptHistory.outputs) {
-            const nodeOutput = promptHistory.outputs[nodeId]
-            const imagesOutput = []
-            if (nodeOutput.images) {
-              for (const image of nodeOutput.images) {
-                const imageData = await getImage(
-                  protocol,
-                  serverAddress,
-                  image.filename,
-                  image.subfolder,
-                  image.type
-                )
-                imagesOutput.push(imageData)
-              }
-            }
-            outputImages[nodeId] = imagesOutput
-          }
           resolve(outputImages)
         }
       }
@@ -73,7 +87,9 @@ export const postWorkflow = async (
   protocol = 's',
   serverAddress,
   workflowData,
-  clientId
+  clientId,
+  isBlob = false,
+  callback
 ) => {
   const response = await fetch(
     `http${protocol}://${serverAddress}/mixlab/prompt`,
@@ -87,6 +103,12 @@ export const postWorkflow = async (
   )
 
   const result = await response.json()
-
-  return handleWebSocket(protocol, serverAddress, result.prompt_id, clientId)
+  if (callback) callback(result.prompt_id)
+  return handleWebSocket(
+    protocol,
+    serverAddress,
+    result.prompt_id,
+    clientId,
+    isBlob
+  )
 }
